@@ -10,22 +10,12 @@ from app.pipeline.text_utils import clean_summary_en, chunk_text, build_raw_text
 
 
 def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
-    """
-    RSRS 종합설계 SOTA 파이프라인 테스트 함수.
-
-    - BigBird-Pegasus로 영문 요약 생성 (SUMMARY_EN)
-    - NLLB로 한글 요약 생성 (SUMMARY_KO, 표시용)
-    - KeyBERT + SciBERT로 영문 키워드 추출 (KEYWORDS_EN)
-    - 키워드 한글 번역 (KEYWORDS_KO, 표시용)
-    - sentence-transformers(all-mpnet-base-v2)로 영문 임베딩 생성
-    - DB에는 어떤 것도 업데이트/저장하지 않고 결과만 출력
-    """
     print("\n===== LOADING MODELS =====")
 
     # 1. summarizer (BigBird-Pegasus)
     summarizer = SummarizerBigBirdPegasus()
 
-    # 2. translator (NLLB) – 임베딩은 영어만, 이건 한글 표시용
+    # 2. translator (NLLB)
     translator = TranslatorM2M100()
 
     # 3. embedding model (영문 임베딩)
@@ -36,7 +26,7 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
     kw_model = KeyBERT("allenai/scibert_scivocab_uncased")
     print("[INFO] KeyBERT using SciBERT loaded")
 
-    # 5. DB에서 논문 읽기 (업로드/업데이트 X)
+    # 5. DB에서 논문 읽기
     cursor = papers_col.find({}).limit(limit)
     total = papers_col.count_documents({})
     print(f"[INFO] Loaded {limit}/{total} papers from MongoDB")
@@ -69,7 +59,7 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         summary_en = clean_summary_en(summary_en_raw)
         print("\n[SUMMARY_EN]\n", summary_en)
 
-        # -------- SUMMARY KO (표시용, 임베딩 X) ----------
+        # -------- SUMMARY KO ----------
         summary_ko_raw = translator.translate(summary_en)
         summary_ko = postprocess_ko_summary(summary_ko_raw)
         print("\n[SUMMARY_KO]\n", summary_ko)
@@ -85,11 +75,11 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         ]
         print("\n[KEYWORDS_EN]\n", keywords_en)
 
-        # -------- KEYWORDS KO (표시용) ----------
+        # -------- KEYWORDS KO ----------
         keywords_ko = [translator.translate(w) for w in keywords_en]
         print("\n[KEYWORDS_KO]\n", keywords_ko)
 
-        # -------- EMBEDDING (영문만 사용) ------------
+        # -------- EMBEDDING ------------
         text_for_emb = (title + "\n" + summary_en).strip()
         emb = embed_model.encode(
             [text_for_emb],

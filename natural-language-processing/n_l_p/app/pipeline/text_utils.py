@@ -5,14 +5,6 @@ from typing import List, Dict
 
 
 def clean_summary_en(text: str) -> str:
-    """
-    BigBird-Pegasus 요약 결과에서 LaTeX/TeX 잡음 제거용 클리너.
-    - @xcite, @xmath0 같은 매크로
-    - #1, #2 자리표시자
-    - epsf.tex, width=... 포함된 괄호
-    - section 토큰
-    등을 최대한 제거해서 깔끔한 영어 요약만 남긴다.
-    """
     if not text:
         return ""
 
@@ -48,10 +40,6 @@ def clean_summary_en(text: str) -> str:
 
 
 def chunk_text(text: str, max_chars: int = 4000) -> List[str]:
-    """
-    아주 단순한 청크 분할:
-    - 문단 기준으로 잘라서 max_chars 넘지 않게 묶어줌
-    """
     paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
     chunks: List[str] = []
     buf = ""
@@ -68,20 +56,14 @@ def chunk_text(text: str, max_chars: int = 4000) -> List[str]:
 
 
 def build_raw_text(doc: Dict) -> str:
-    """
-    MongoDB 문서에서 abstract + body(text)를 하나로 합쳐서
-    요약 입력으로 사용할 raw 텍스트 생성.
-    """
+   
     abstract = doc.get("abstract") or ""
     body = doc.get("text") or ""
     raw_text = (abstract + "\n" + body).strip()
     return raw_text
 
 def postprocess_ko_summary(text: str) -> str:
-    """
-    M2M100 한국어 번역 결과를 논문 스타일에 맞게 가볍게 교정.
-    - 자주 나오는 오역/어색한 표현만 치환.
-    """
+   
     if not text:
         return ""
 

@@ -12,11 +12,6 @@ def _basic_clean(text: str) -> str:
 
 
 class SummarizerBigBirdPegasus:
-    """
-    BigBird-Pegasus 기반 영문 요약기.
-    - 긴 논문(abstract + body)을 여러 청크로 나눠 요약하고,
-      청크 요약들을 다시 한 번 요약해서 최종 SUMMARY_EN 생성.
-    """
 
     def __init__(
         self,
@@ -34,7 +29,6 @@ class SummarizerBigBirdPegasus:
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(self.device)
 
     def _summarize_once(self, text: str) -> str:
-        """청크 하나에 대해 한 번 요약."""
         if not text:
             return ""
 
@@ -65,10 +59,7 @@ class SummarizerBigBirdPegasus:
 
     @staticmethod
     def _chunk_text(text: str, max_chars: int = 4000) -> List[str]:
-        """
-        너무 긴 텍스트를 문단 단위로 잘라 청크 리스트 생성.
-        BigBird가 길이를 많이 버티긴 하지만, 안전하게 청크 요약 + 재요약 구조로.
-        """
+    
         paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
         chunks = []
         buf = ""
@@ -84,10 +75,7 @@ class SummarizerBigBirdPegasus:
         return chunks
 
     def summarize(self, text: str) -> str:
-        """
-        1) 긴 원문을 청크로 나눠 각 청크를 요약
-        2) 청크 요약들을 이어 붙여 다시 한 번 요약 → 최종 SUMMARY_EN
-        """
+      
         text = _basic_clean(text)
         if not text:
             return ""

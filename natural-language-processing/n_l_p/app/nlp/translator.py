@@ -6,12 +6,6 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 
 class TranslatorM2M100:
-    """
-    EN -> KO 번역기 (facebook/m2m100_1.2B 기반)
-    - 문장 단위로 나눠서 번역
-    - 물리/수학/Computer Science 용어를 룰 기반으로 후처리
-    - 한국어 문장을 학술 논문체(~다/~이다)로 정리
-    """
 
     def __init__(self, model_name: str = "facebook/m2m100_1.2B", device: str | None = None):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,11 +17,7 @@ class TranslatorM2M100:
         self.src_lang = "en"
         self.tgt_lang = "ko"
 
-    # -----------------------------
-    #   내부: 문장 하나 번역
-    # -----------------------------
     def _translate_one(self, sentence: str) -> str:
-        """영어 문장 하나를 한국어로 번역."""
         sentence = sentence.strip()
         if not sentence:
             return ""
@@ -51,22 +41,14 @@ class TranslatorM2M100:
         ko = self.tokenizer.decode(output[0], skip_special_tokens=True).strip()
         return ko
 
-    # -----------------------------
-    #   내부: 번역 후 용어/스타일 정리
-    # -----------------------------
+    
     def _postprocess(self, text: str) -> str:
-        """
-        M2M100 한국어 번역 결과를 논문 스타일에 맞게 후처리.
-        - 긴 영어 문장 제거 (NLP, QGP 등 짧은 토큰은 유지)
-        - 물리/CS 용어 교정
-        - 학술체(~다/~이다)로 정리
-        """
+       
+      
         if not text:
             return ""
 
         # --- 1) 긴 영어 문장 제거 ---
-        # 영어 단어 6개 이상 연속되면 "영어 문장"으로 보고 통째로 삭제
-        # 예: "a fully differential calculation is presented for the production of ..."
         text = re.sub(
             r"(?:[A-Za-z]{1,}\s+){6,}[A-Za-z]{1,}",
             " ",
@@ -211,16 +193,7 @@ class TranslatorM2M100:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
-    # -----------------------------
-    #   public: 전체 텍스트 번역
-    # -----------------------------
     def translate(self, text: str) -> str:
-        """
-        EN → KO 번역:
-        1) 영어 텍스트를 문장 단위로 split
-        2) 각 문장을 M2M100으로 번역
-        3) 합친 후, 용어/스타일 후처리 적용
-        """
         if not text:
             return ""
 
