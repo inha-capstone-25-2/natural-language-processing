@@ -90,7 +90,8 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         summary_ko = refiner.refine(summary_en, summary_ko_raw, keywords_en)
         print("\n[SUMMARY_KO]\n", summary_ko)
        
-        text_for_emb = (title + "\n" + summary_en).strip()
+        text_for_emb = "\n".join(keywords_en).strip()
+
         emb = embed_model.encode(
             [text_for_emb],
             normalize_embeddings=True,
