@@ -1,6 +1,7 @@
 # app/nlp/summarizer.py
 
 from typing import Optional, List
+from pathlib import Path
 import re
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
@@ -12,21 +13,29 @@ def _basic_clean(text: str) -> str:
 
 
 class SummarizerBigBirdPegasus:
-
     def __init__(
         self,
-        model_name: str = "google/bigbird-pegasus-large-arxiv",
+        model_path: str = "models/bigbird", 
         device: Optional[str] = None,
         max_input_length: int = 4096,
         max_output_length: int = 256,
     ):
+        self.model_path = Path(model_path)
+
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.max_input_length = max_input_length
         self.max_output_length = max_output_length
 
-        print(f"[INFO] Loading BigBird-Pegasus on {self.device}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(self.device)
+        print(f"[INFO] Loading BigBird-Pegasus from {self.model_path} on {self.device}...")
+
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_path,
+            local_files_only=True, 
+        )
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
+            self.model_path,
+            local_files_only=True,
+        ).to(self.device)
 
     def _summarize_once(self, text: str) -> str:
         if not text:
@@ -59,10 +68,10 @@ class SummarizerBigBirdPegasus:
 
     @staticmethod
     def _chunk_text(text: str, max_chars: int = 4000) -> List[str]:
-    
         paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-        chunks = []
+        chunks: List[str] = []
         buf = ""
+
         for p in paragraphs:
             if len(buf) + len(p) + 1 > max_chars:
                 if buf:
@@ -70,12 +79,13 @@ class SummarizerBigBirdPegasus:
                 buf = p
             else:
                 buf += ("\n" + p) if buf else p
+
         if buf:
             chunks.append(buf.strip())
+
         return chunks
 
     def summarize(self, text: str) -> str:
-      
         text = _basic_clean(text)
         if not text:
             return ""
@@ -84,10 +94,8 @@ class SummarizerBigBirdPegasus:
         if not chunks:
             return ""
 
-        # 1단계: 청크별 요약
-        chunk_summaries = []
+        chunk_summaries: List[str] = []
         for i, ch in enumerate(chunks):
-            print(f"[DEBUG] summarizing chunk {i+1}/{len(chunks)} (len={len(ch)})")
             s = self._summarize_once(ch)
             if s:
                 chunk_summaries.append(s)
@@ -95,7 +103,6 @@ class SummarizerBigBirdPegasus:
         if not chunk_summaries:
             return ""
 
-        # 2단계: 청크 요약들을 다시 한 번 요약
         joined = " ".join(chunk_summaries)
         final_summary = self._summarize_once(joined)
         return final_summary

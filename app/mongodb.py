@@ -10,7 +10,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT_DIR / ".env"
 load_dotenv(ENV_PATH)
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://rsrs-root:KIQu3jebjHNhTEE6mm5tgj2oNjYr7J805k2JLbE0AVo@35.87.92.19:27017/arxiv?authSource=admin")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "arxiv")
 MONGO_COLLECTION_NAME = os.getenv("MONGO_COLLECTION_NAME", "papers")
 
