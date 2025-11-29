@@ -55,7 +55,7 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
     for doc in cursor:
         print("\n" + "=" * 50)
 
-        paper_id = doc.get("id") or doc.get("arxiv_id")
+        paper_id = doc.get("id") or doc.get("_id")
         print("[ID]", paper_id)
 
         title = doc.get("title", "") or ""
