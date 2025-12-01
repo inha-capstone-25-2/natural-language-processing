@@ -1,6 +1,7 @@
 # app/pipeline/pipeline.py
 import warnings
 import logging
+import datetime
 import transformers
 from sentence_transformers import SentenceTransformer, LoggingHandler
 from keybert import KeyBERT
@@ -47,9 +48,23 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
             "$elemMatch": {"$in": cs_categories}
         }
     }
-
-    cursor = papers_col.find(cs_filter).limit(limit)
-    print(f"[INFO] Prepared cursor for up to {limit} cs.* papers")
+    # count = papers_col.count_documents(cs_filter)
+    # print("CS 논문 개수:", count)
+    if limit is None:
+        cursor = (
+            papers_col
+            .find(cs_filter)
+            .sort("view_count", -1)
+        )
+        print("[INFO] Prepared cursor for ALL cs.* papers (sorted by view_count desc)")
+    else:
+        cursor = (
+            papers_col
+            .find(cs_filter)
+            .sort("view_count", -1)
+            .limit(limit)
+        )
+        print(f"[INFO] Prepared cursor for up to {limit} cs.* papers (sorted by view_count desc)")
 
     # ============================ PROCESS ============================
     for doc in cursor:
@@ -57,7 +72,13 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
 
         paper_id = doc.get("id") or doc.get("_id")
         print("[ID]", paper_id)
-
+        
+        if doc.get("summary_refined") is True:
+            print(f"[INFO] Skip (already refined): {paper_id}")
+            continue
+        
+     
+        
         title = doc.get("title", "") or ""
         raw_text = build_raw_text(doc)
 
@@ -87,7 +108,14 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         ]
         print("\n[KEYWORDS_EN]\n", keywords_en)
         
-        summary_ko = refiner.refine(summary_en, summary_ko_raw, keywords_en)
+        summary_en_refined, summary_ko = refiner.refine_both(
+            summary_en_raw=summary_en,    
+            summary_ko_raw=summary_ko_raw,
+            keywords_en=keywords_en,
+        
+        )
+        print("\n[SUMMARY_EN_refined]\n", summary_en_refined)
+        
         print("\n[SUMMARY_KO]\n", summary_ko)
        
         text_for_emb = "\n".join(keywords_en).strip()
@@ -97,5 +125,22 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
             normalize_embeddings=True,
         )[0]
         # print("\n[EMBEDDING] first 10 dims\n", emb[:10])
+        
+        update_doc = {
+            "keywords": keywords_en,
+            "summary": {
+                "ko": summary_ko,
+                "en": summary_en_refined,
+            },
+            "embedding_vector": emb.tolist(),
+            "summary_refined": True,
+        }
 
-    print("\n[INFO] COMPLETE (NO DB UPDATE)\n")
+        papers_col.update_one(
+            {"_id": doc["_id"]},
+            {"$set": update_doc}
+        )
+
+        print(f"[INFO] Updated document: {paper_id}")
+
+print("\n[INFO] COMPLETE (DB UPDATED)\n")
