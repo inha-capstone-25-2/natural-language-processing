@@ -1,10 +1,10 @@
 # app/pipeline/pipeline.py
 import warnings
 import logging
-import datetime
 import transformers
 from sentence_transformers import SentenceTransformer, LoggingHandler
 from keybert import KeyBERT
+from pymongo import UpdateOne
 
 from app.mongodb import papers_col
 from app.nlp.summarizer import SummarizerBigBirdPegasus
@@ -22,7 +22,12 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 transformers.logging.set_verbosity_error()
 
-def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
+
+def run_sota_pipeline(
+    limit: int = 10,
+    top_k: int = 10,
+    sort_order: int = -1,   # -1: view_count 높은 것부터, 1: 낮은 것부터
+) -> None:
     print("\n===== LOADING MODELS =====")
 
     summarizer = SummarizerBigBirdPegasus()
@@ -43,30 +48,42 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         "cs.SD","cs.SE","cs.SI","cs.SY"
     ]
     
-    cs_filter = {
-        "categories": {
-            "$elemMatch": {"$in": cs_categories}
-        }
+    cs_filter_base = {
+        "categories": {"$elemMatch": {"$in": cs_categories}}
     }
-    # count = papers_col.count_documents(cs_filter)
-    # print("CS 논문 개수:", count)
+    not_refined_filter = {
+        "$or": [
+            {"summary_refined": {"$exists": False}},
+            {"summary_refined": {"$ne": True}},
+        ]
+    }
+    cs_filter = {
+        "$and": [cs_filter_base, not_refined_filter]
+    }
+
+    remaining = papers_col.count_documents(cs_filter)
+    print(f"[INFO] Remaining unrefined CS papers: {remaining}")
+
     if limit is None:
         cursor = (
             papers_col
             .find(cs_filter)
-            .sort("view_count", -1)
+            .sort("view_count", sort_order)
         )
-        print("[INFO] Prepared cursor for ALL cs.* papers (sorted by view_count desc)")
+        print(f"[INFO] Prepared cursor for ALL remaining cs.* papers (sorted by view_count {sort_order})")
     else:
         cursor = (
             papers_col
             .find(cs_filter)
-            .sort("view_count", -1)
+            .sort("view_count", sort_order)
             .limit(limit)
         )
-        print(f"[INFO] Prepared cursor for up to {limit} cs.* papers (sorted by view_count desc)")
+        print(f"[INFO] Prepared cursor for up to {limit} remaining cs.* papers (sorted by view_count {sort_order})")
 
-    # ============================ PROCESS ============================
+    BATCH_SIZE = 50
+    ops = []
+    updated_count = 0
+
     for doc in cursor:
         print("\n" + "=" * 50)
 
@@ -76,8 +93,6 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         if doc.get("summary_refined") is True:
             print(f"[INFO] Skip (already refined): {paper_id}")
             continue
-        
-     
         
         title = doc.get("title", "") or ""
         raw_text = build_raw_text(doc)
@@ -95,7 +110,6 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
         print("\n[SUMMARY_EN]\n", summary_en)
 
         summary_ko_raw = translator.translate(summary_en)
-        # print("\n[SUMMARY_KO_RAW]\n", summary_ko_raw)
 
         keywords_en = [
             w
@@ -112,10 +126,8 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
             summary_en_raw=summary_en,    
             summary_ko_raw=summary_ko_raw,
             keywords_en=keywords_en,
-        
         )
         print("\n[SUMMARY_EN_refined]\n", summary_en_refined)
-        
         print("\n[SUMMARY_KO]\n", summary_ko)
        
         text_for_emb = "\n".join(keywords_en).strip()
@@ -124,7 +136,6 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
             [text_for_emb],
             normalize_embeddings=True,
         )[0]
-        # print("\n[EMBEDDING] first 10 dims\n", emb[:10])
         
         update_doc = {
             "keywords": keywords_en,
@@ -135,12 +146,24 @@ def run_sota_pipeline(limit: int = 10, top_k: int = 10) -> None:
             "embedding_vector": emb.tolist(),
             "summary_refined": True,
         }
-
-        papers_col.update_one(
-            {"_id": doc["_id"]},
-            {"$set": update_doc}
+        
+        ops.append(
+            UpdateOne(
+                {"_id": doc["_id"]},
+                {"$set": update_doc}
+            )
         )
+        updated_count += 1
 
-        print(f"[INFO] Updated document: {paper_id}")
+        if len(ops) >= BATCH_SIZE:
+            result = papers_col.bulk_write(ops, ordered=False)
+            print(f"[INFO] Bulk updated {result.modified_count} documents (total so far: {updated_count})")
+            ops = []  
 
-print("\n[INFO] COMPLETE (DB UPDATED)\n")
+        print(f"[INFO] Queued update for document: {paper_id}")
+
+    if ops:
+        result = papers_col.bulk_write(ops, ordered=False)
+        print(f"[INFO] Final bulk updated {result.modified_count} documents (total: {updated_count})")
+
+    print("\n[INFO] COMPLETE (DB UPDATED)\n")

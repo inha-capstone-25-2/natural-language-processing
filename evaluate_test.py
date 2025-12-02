@@ -38,7 +38,7 @@ cursor = (
         }
     )
     .sort("view_count", -1)
-    .limit(10000)
+    .limit(3000)
 )
 
 print("[INFO] Number of docs to evaluate:", cursor.count() if hasattr(cursor, "count") else "cursor ready")
