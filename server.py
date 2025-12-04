@@ -96,10 +96,14 @@ async def summarize_batch(request: SummarizeBatchRequest):
     Raises:
         HTTPException: 요약 생성 실패 시
     """
+    import time
+    
     if not request.texts:
         raise HTTPException(status_code=400, detail="texts는 비어있을 수 없습니다")
 
-    logger.info(f"[API] Batch summarize request: {len(request.texts)} texts")
+    total_start = time.time()
+    logger.info(f"[API] ========== 배치 요약 요청 시작 ==========")
+    logger.info(f"[API] 요청 텍스트 수: {len(request.texts)}")
 
     try:
         summarizer = get_summarizer()
@@ -107,24 +111,44 @@ async def summarize_batch(request: SummarizeBatchRequest):
         results = []
 
         for i, text in enumerate(request.texts):
+            text_start = time.time()
+            text_preview = text[:100].replace('\n', ' ') + "..." if len(text) > 100 else text.replace('\n', ' ')
+            logger.info(f"[API] [{i+1}/{len(request.texts)}] 처리 시작 | 입력 길이: {len(text)} chars")
+            logger.info(f"[API] [{i+1}/{len(request.texts)}] 입력 미리보기: {text_preview}")
+            
             try:
                 # 1. 영문 요약
+                summarize_start = time.time()
                 summary_en = summarizer.summarize(text)
-                logger.debug(f"[API] Summarized text {i+1}/{len(request.texts)}")
+                summarize_time = time.time() - summarize_start
+                logger.info(f"[API] [{i+1}/{len(request.texts)}] 요약 완료 | 소요: {summarize_time:.2f}s | 출력 길이: {len(summary_en)} chars")
                 
                 # 2. 한글 번역
+                translate_start = time.time()
                 summary_ko = translator.translate(summary_en) if summary_en else ""
-                logger.debug(f"[API] Translated text {i+1}/{len(request.texts)}")
+                translate_time = time.time() - translate_start
+                logger.info(f"[API] [{i+1}/{len(request.texts)}] 번역 완료 | 소요: {translate_time:.2f}s | 출력 길이: {len(summary_ko)} chars")
+                
+                # 결과 미리보기
+                en_preview = summary_en[:80] + "..." if len(summary_en) > 80 else summary_en
+                ko_preview = summary_ko[:80] + "..." if len(summary_ko) > 80 else summary_ko
+                logger.info(f"[API] [{i+1}/{len(request.texts)}] 영문 요약: {en_preview}")
+                logger.info(f"[API] [{i+1}/{len(request.texts)}] 한글 번역: {ko_preview}")
+                
+                text_time = time.time() - text_start
+                logger.info(f"[API] [{i+1}/{len(request.texts)}] 처리 완료 | 총 소요: {text_time:.2f}s")
                 
                 results.append(SummaryResult(
                     summary_en=summary_en,
                     summary_ko=summary_ko
                 ))
             except Exception as e:
-                logger.error(f"[API] Failed to process text {i+1}: {e}")
+                logger.error(f"[API] [{i+1}/{len(request.texts)}] 처리 실패: {e}")
                 results.append(SummaryResult(summary_en="", summary_ko=""))
 
-        logger.info(f"[API] Batch summarize completed: {len(results)} results")
+        total_time = time.time() - total_start
+        logger.info(f"[API] ========== 배치 요약 완료 ==========")
+        logger.info(f"[API] 총 처리: {len(results)}건 | 총 소요 시간: {total_time:.2f}s | 평균: {total_time/len(results):.2f}s/건")
         return SummarizeBatchResponse(results=results)
 
     except Exception as e:
