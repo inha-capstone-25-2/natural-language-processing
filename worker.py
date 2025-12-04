@@ -5,8 +5,8 @@ from pymongo import MongoClient, UpdateOne
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
 
-from app.summarizer import get_summarizer
-from app.translator import get_translator
+from app.nlp.summarizer import get_summarizer
+from app.nlp.translator import get_translator
 
 # 로깅 설정
 logging.basicConfig(

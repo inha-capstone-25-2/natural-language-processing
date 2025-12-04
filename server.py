@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
-from app.summarizer import get_summarizer
+from app.nlp.summarizer import get_summarizer
 
 # 로깅 설정
 logging.basicConfig(
