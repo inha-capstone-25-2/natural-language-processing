@@ -18,3 +18,7 @@ build
 dist
 *.egg-info
 .DS_Store
+
+# Large directories (models are loaded from host via volume mount)
+models
+data

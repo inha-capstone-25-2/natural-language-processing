@@ -8,6 +8,8 @@ services:
       # 개발 편의성을 위해 로컬 디렉토리를 마운트 (코드 수정 시 즉시 반영)
       # 배포 시에는 이 라인을 제거하거나 주석 처리하는 것이 좋습니다.
       - .:/app
+      # 사전 다운로드된 모델 디렉토리 마운트
+      - ./models:/app/models
     environment:
       - TZ=Asia/Seoul
     # 개발 중에는 --reload 옵션 사용
