@@ -1,35 +1,50 @@
-# app/nlp/translate.py
+# app/nlp/translator.py
 
 import re
+import logging
+from typing import Optional, List
 import torch
 from transformers import M2M100Tokenizer, M2M100ForConditionalGeneration
 
+from app.config import M2M100_MODEL_PATH
+
+logger = logging.getLogger(__name__)
 
 class TranslatorM2M100:
 
     def __init__(
         self,
-        model_name: str = "models/m2m100_cs_finetuned",
+        model_name: str = M2M100_MODEL_PATH,
         device: str | None = None,
         use_fp16: bool = False,
     ):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.use_fp16 = use_fp16
+        
+        logger.info(f"[Translator] Loading M2M100 from {model_name}")
+        logger.info(f"[Translator] Using device: {self.device}")
 
-        self.tokenizer = M2M100Tokenizer.from_pretrained(model_name)
-        self.model = M2M100ForConditionalGeneration.from_pretrained(model_name)
+        try:
+            self.tokenizer = M2M100Tokenizer.from_pretrained(model_name)
+            self.model = M2M100ForConditionalGeneration.from_pretrained(model_name)
 
-        if self.device == "cuda":
-            if self.use_fp16:
-                self.model = self.model.half()
-            self.model.to(self.device)
-        else:
-            self.model.to(self.device)
-            self.use_fp16 = False 
-
-        self.src_lang = "en"
-        self.tgt_lang = "ko"
-        self.tokenizer.src_lang = self.src_lang
+            if self.device == "cuda":
+                if self.use_fp16:
+                    self.model = self.model.half()
+                self.model.to(self.device)
+            else:
+                self.model.to(self.device)
+                self.use_fp16 = False 
+            
+            self.src_lang = "en"
+            self.tgt_lang = "ko"
+            self.tokenizer.src_lang = self.src_lang
+            
+            logger.info("[Translator] Model loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"[Translator] Failed to load model: {e}")
+            raise
 
     def _translate_one(self, sentence: str, max_length: int = 512) -> str:
         sentence = sentence.strip()
@@ -44,18 +59,18 @@ class TranslatorM2M100:
             max_length=max_length,
         ).to(self.device)
 
-        with torch.no_grad(), torch.cuda.amp.autocast(
-            enabled=self.use_fp16 and self.device == "cuda"
-        ):
-            output = self.model.generate(
-                **encoded,
-                forced_bos_token_id=self.tokenizer.get_lang_id(self.tgt_lang),
-                num_beams=4,             
-                max_length=max_length,
-                no_repeat_ngram_size=3,
-                use_cache=True,
-                early_stopping=False,
-            )
+        with torch.no_grad():
+            # fp16 autocast if applicable
+            with torch.cuda.amp.autocast(enabled=self.use_fp16 and self.device == "cuda"):
+                output = self.model.generate(
+                    **encoded,
+                    forced_bos_token_id=self.tokenizer.get_lang_id(self.tgt_lang),
+                    num_beams=4,             
+                    max_length=max_length,
+                    no_repeat_ngram_size=3,
+                    use_cache=True,
+                    early_stopping=False,
+                )
 
         ko = self.tokenizer.decode(output[0], skip_special_tokens=True).strip()
         return ko
@@ -74,18 +89,17 @@ class TranslatorM2M100:
             max_length=max_length,
         ).to(self.device)
 
-        with torch.no_grad(), torch.cuda.amp.autocast(
-            enabled=self.use_fp16 and self.device == "cuda"
-        ):
-            output = self.model.generate(
-                **enc,
-                forced_bos_token_id=self.tokenizer.get_lang_id(self.tgt_lang),
-                num_beams=1,
-                do_sample=False,
-                max_length=max_length,
-                use_cache=True,
-                early_stopping=False,
-            )
+        with torch.no_grad():
+            with torch.cuda.amp.autocast(enabled=self.use_fp16 and self.device == "cuda"):
+                output = self.model.generate(
+                    **enc,
+                    forced_bos_token_id=self.tokenizer.get_lang_id(self.tgt_lang),
+                    num_beams=1,
+                    do_sample=False,
+                    max_length=max_length,
+                    use_cache=True,
+                    early_stopping=False,
+                )
 
         decoded = self.tokenizer.batch_decode(output, skip_special_tokens=True)
         return decoded
@@ -109,3 +123,16 @@ class TranslatorM2M100:
             ko_list = self.translate_batch(batch)
             results.extend(ko_list)
         return results
+
+
+# 싱글톤 인스턴스 및 접근 함수
+_translator: Optional[TranslatorM2M100] = None
+
+def get_translator() -> TranslatorM2M100:
+    """
+    TranslatorM2M100 싱글톤 인스턴스 반환.
+    """
+    global _translator
+    if _translator is None:
+        _translator = TranslatorM2M100()
+    return _translator

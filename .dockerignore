@@ -1,0 +1,24 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.git
+.gitignore
+.gitmodules
+.vscode
+.idea
+build
+dist
+*.egg-info
+.DS_Store
+
+# Large directories (models are loaded from host via volume mount)
+models
+data
