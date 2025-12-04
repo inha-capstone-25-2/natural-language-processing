@@ -1,0 +1,23 @@
+services:
+  gpu-server:
+    build: .
+    container_name: nlp-gpu-server
+    ports:
+      - "8000:8000"
+    volumes:
+      # 개발 편의성을 위해 로컬 디렉토리를 마운트 (코드 수정 시 즉시 반영)
+      # 배포 시에는 이 라인을 제거하거나 주석 처리하는 것이 좋습니다.
+      - .:/app
+    environment:
+      - TZ=Asia/Seoul
+    # 개발 중에는 --reload 옵션 사용
+    command: uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+
+    # --- GPU 설정 (GPU 서버 배포 시 주석 해제) ---
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
