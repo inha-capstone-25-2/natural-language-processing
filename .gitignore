@@ -6,3 +6,4 @@ data/
 models/
 .env
 /cap
+/venv

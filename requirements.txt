@@ -1,32 +1,33 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-python-dotenv==1.0.1
-httpx==0.27.0
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-dotenv>=1.0.1
+requests>=2.32.3
+tqdm>=4.66.4
+pydantic>=2.0.0
 
+# NLP & ML
 torch>=2.2.0
 transformers>=4.44.0
 sentencepiece>=0.2.0
-accelerate==0.33.0
-sentence-transformers==2.7.0
+accelerate>=0.33.0
+sentence-transformers>=2.7.0
 safetensors
 einops
+numpy>=1.26.4
+scikit-learn>=1.5.1
+nltk>=3.9.1
+keybert>=0.8.5
 
-keybert==0.8.5
-scikit-learn==1.5.1
-faiss-cpu==1.8.0
-numpy==1.26.4
-nltk==3.9.1
+# Database & Async
+pymongo>=4.8.0
+celery[redis]>=5.3.0
 
-pymongo==4.8.0
-
-beautifulsoup4==4.12.3
-lxml==5.2.2
-
-tqdm==4.66.4
-requests==2.32.3
-
+# Utils
+beautifulsoup4>=4.12.3
+lxml>=5.2.2
 openai
-peft==0.13.0
+peft>=0.13.0
 datasets
 sacrebleu
 evaluate
