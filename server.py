@@ -1,7 +1,7 @@
 """
 GPU 요약 서버 - FastAPI 메인 파일.
 
-BigBird-Pegasus 모델을 사용한 논문 요약 API를 제공합니다.
+BigBird-Pegasus + M2M100 모델을 사용한 논문 요약 및 번역 API를 제공합니다.
 """
 
 import logging
@@ -9,7 +9,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
+
 from app.nlp.summarizer import get_summarizer
+from app.nlp.translator import get_translator
 
 # 로깅 설정
 logging.basicConfig(
@@ -24,19 +26,22 @@ logger = logging.getLogger(__name__)
 
 class SummarizeBatchRequest(BaseModel):
     """배치 요약 요청 스키마"""
-
     texts: List[str]
+
+
+class SummaryResult(BaseModel):
+    """개별 요약 결과"""
+    summary_en: str
+    summary_ko: str
 
 
 class SummarizeBatchResponse(BaseModel):
     """배치 요약 응답 스키마"""
-
-    summaries: List[str]
+    results: List[SummaryResult]
 
 
 class HealthResponse(BaseModel):
     """헬스 체크 응답 스키마"""
-
     status: str
     model_loaded: bool
     device: str
@@ -50,12 +55,15 @@ class HealthResponse(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """앱 시작 및 종료 시 모델 로딩/언로딩"""
-    logger.info("[Startup] Loading BigBird model...")
+    logger.info("[Startup] Loading models...")
     try:
         summarizer = get_summarizer()
-        logger.info(f"[Startup] Model loaded successfully on {summarizer.device}")
+        logger.info(f"[Startup] BigBird loaded on {summarizer.device}")
+        
+        translator = get_translator()
+        logger.info(f"[Startup] M2M100 loaded on {translator.device}")
     except Exception as e:
-        logger.error(f"[Startup] Failed to load model: {e}")
+        logger.error(f"[Startup] Failed to load models: {e}")
         raise
 
     yield
@@ -65,8 +73,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="GPU Summary Server",
-    description="BigBird-Pegasus 기반 논문 요약 API",
-    version="1.0.0",
+    description="BigBird-Pegasus + M2M100 기반 논문 요약 및 번역 API",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -77,13 +85,13 @@ app = FastAPI(
 @app.post("/summarize/batch", response_model=SummarizeBatchResponse)
 async def summarize_batch(request: SummarizeBatchRequest):
     """
-    배치 텍스트 요약 생성.
+    배치 텍스트 요약 및 번역.
 
     Args:
         request: 요약할 텍스트 리스트
 
     Returns:
-        요약 결과 리스트
+        요약 결과 리스트 (영문 + 한글)
 
     Raises:
         HTTPException: 요약 생성 실패 시
@@ -95,20 +103,29 @@ async def summarize_batch(request: SummarizeBatchRequest):
 
     try:
         summarizer = get_summarizer()
-        summaries = []
+        translator = get_translator()
+        results = []
 
         for i, text in enumerate(request.texts):
             try:
-                summary = summarizer.summarize(text)
-                summaries.append(summary)
+                # 1. 영문 요약
+                summary_en = summarizer.summarize(text)
                 logger.debug(f"[API] Summarized text {i+1}/{len(request.texts)}")
+                
+                # 2. 한글 번역
+                summary_ko = translator.translate(summary_en) if summary_en else ""
+                logger.debug(f"[API] Translated text {i+1}/{len(request.texts)}")
+                
+                results.append(SummaryResult(
+                    summary_en=summary_en,
+                    summary_ko=summary_ko
+                ))
             except Exception as e:
-                logger.error(f"[API] Failed to summarize text {i+1}: {e}")
-                # 실패한 경우 빈 문자열 반환
-                summaries.append("")
+                logger.error(f"[API] Failed to process text {i+1}: {e}")
+                results.append(SummaryResult(summary_en="", summary_ko=""))
 
-        logger.info(f"[API] Batch summarize completed: {len(summaries)} summaries")
-        return SummarizeBatchResponse(summaries=summaries)
+        logger.info(f"[API] Batch summarize completed: {len(results)} results")
+        return SummarizeBatchResponse(results=results)
 
     except Exception as e:
         logger.error(f"[API] Batch summarize error: {e}")
@@ -127,14 +144,12 @@ async def health_check():
         summarizer = get_summarizer()
         device = summarizer.device
 
-        # GPU 메모리 정보 (CUDA 사용 시)
         gpu_memory_allocated = "N/A"
         gpu_memory_reserved = "N/A"
 
         if device == "cuda":
             try:
                 import torch
-
                 gpu_memory_allocated = f"{torch.cuda.memory_allocated() / 1024**3:.2f} GB"
                 gpu_memory_reserved = f"{torch.cuda.memory_reserved() / 1024**3:.2f} GB"
             except Exception as e:
@@ -156,4 +171,4 @@ async def health_check():
 @app.get("/")
 def root():
     """루트 엔드포인트"""
-    return {"message": "GPU Summary Server", "version": "1.0.0"}
+    return {"message": "GPU Summary Server", "version": "2.0.0"}
