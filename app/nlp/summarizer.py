@@ -12,9 +12,46 @@ from app.config import BIGBIRD_MODEL_PATH
 logger = logging.getLogger(__name__)
 
 def _basic_clean(text: str) -> str:
-    """기본 텍스트 정리"""
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    """
+    영문 논문 텍스트 정리.
+    
+    LaTeX 명령어, 특수 문자, 이상 패턴 등을 제거합니다.
+    백엔드 서버의 clean_summary_en 로직을 통합하여 구현.
+    """
+    if not text:
+        return ""
+
+    # <n>을 공백으로 변환
+    text = text.replace("<n>", " ")
+
+    # @ 멘션, LaTeX 명령어, $ 기호 제거
+    text = re.sub(r"@[a-zA-Z0-9_]+", " ", text)
+    text = re.sub(r"\\[a-zA-Z]+", " ", text)
+    text = re.sub(r"\$+", " ", text)
+
+    # 섹션 번호 제거
+    text = re.sub(r"#\s*\d+", " ", text)
+
+    # LaTeX 그래픽 관련 패턴 제거
+    text = re.sub(r"epsf\.tex[^)]*\)", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\([^)]*width[^)]*\)", " ", text, flags=re.IGNORECASE)
+
+    # "section" 단어 제거
+    if "section" in text.lower():
+        text = re.sub(r"\b[Ss]ection\b", " ", text)
+
+    # 특수 문자 제거
+    text = text.replace("[", " ").replace("]", " ")
+    text = text.replace("*", " ")
+    text = text.replace(",", " ")
+
+    # 빈 괄호 제거
+    text = re.sub(r"\(\s*\)", " ", text)
+
+    # 중복 공백 제거
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
 
 
 class SummarizerBigBirdPegasus:
