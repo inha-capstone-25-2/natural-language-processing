@@ -61,7 +61,7 @@ class TranslatorM2M100:
 
         with torch.no_grad():
             # fp16 autocast if applicable
-            with torch.cuda.amp.autocast(enabled=self.use_fp16 and self.device == "cuda"):
+            with torch.amp.autocast('cuda', enabled=self.use_fp16 and self.device == "cuda"):
                 output = self.model.generate(
                     **encoded,
                     forced_bos_token_id=self.tokenizer.get_lang_id(self.tgt_lang),
@@ -76,6 +76,7 @@ class TranslatorM2M100:
         return ko
 
     def translate_batch(self, sentences: list[str], max_length: int = 512) -> list[str]:
+        """배치 번역 (greedy decoding으로 최적화)"""
         sentences = [s.strip() for s in sentences if s.strip()]
         if not sentences:
             return []
@@ -90,15 +91,14 @@ class TranslatorM2M100:
         ).to(self.device)
 
         with torch.no_grad():
-            with torch.cuda.amp.autocast(enabled=self.use_fp16 and self.device == "cuda"):
+            with torch.amp.autocast('cuda', enabled=self.use_fp16 and self.device == "cuda"):
                 output = self.model.generate(
                     **enc,
                     forced_bos_token_id=self.tokenizer.get_lang_id(self.tgt_lang),
-                    num_beams=1,
+                    num_beams=1,  # Greedy decoding (최대 속도)
                     do_sample=False,
                     max_length=max_length,
                     use_cache=True,
-                    early_stopping=False,
                 )
 
         decoded = self.tokenizer.batch_decode(output, skip_special_tokens=True)
@@ -131,8 +131,10 @@ _translator: Optional[TranslatorM2M100] = None
 def get_translator() -> TranslatorM2M100:
     """
     TranslatorM2M100 싱글톤 인스턴스 반환.
+    FP16 기본 활성화.
     """
     global _translator
     if _translator is None:
-        _translator = TranslatorM2M100()
+        _translator = TranslatorM2M100(use_fp16=True)
     return _translator
+

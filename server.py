@@ -86,6 +86,7 @@ app = FastAPI(
 async def summarize_batch(request: SummarizeBatchRequest):
     """
     배치 텍스트 요약 및 번역.
+    GPU 배치 추론을 사용하여 처리량 극대화.
 
     Args:
         request: 요약할 텍스트 리스트
@@ -102,53 +103,44 @@ async def summarize_batch(request: SummarizeBatchRequest):
         raise HTTPException(status_code=400, detail="texts는 비어있을 수 없습니다")
 
     total_start = time.time()
+    batch_size = len(request.texts)
     logger.info(f"[API] ========== 배치 요약 요청 시작 ==========")
-    logger.info(f"[API] 요청 텍스트 수: {len(request.texts)}")
+    logger.info(f"[API] 요청 텍스트 수: {batch_size}")
 
     try:
         summarizer = get_summarizer()
         translator = get_translator()
+        
+        # 1. 배치 요약 (GPU 병렬 처리)
+        summarize_start = time.time()
+        if batch_size == 1:
+            # 단일 텍스트는 기존 방식
+            summaries_en = [summarizer.summarize(request.texts[0])]
+        else:
+            # 여러 텍스트는 배치 처리
+            summaries_en = summarizer.summarize_batch(request.texts)
+        summarize_time = time.time() - summarize_start
+        logger.info(f"[API] 배치 요약 완료 | 소요: {summarize_time:.2f}s | 평균: {summarize_time/batch_size:.2f}s/건")
+        
+        # 2. 배치 번역 (GPU 병렬 처리)
+        translate_start = time.time()
+        summaries_ko = translator.translate_batch(summaries_en)
+        translate_time = time.time() - translate_start
+        logger.info(f"[API] 배치 번역 완료 | 소요: {translate_time:.2f}s | 평균: {translate_time/batch_size:.2f}s/건")
+        
+        # 결과 생성
         results = []
-
-        for i, text in enumerate(request.texts):
-            text_start = time.time()
-            text_preview = text[:100].replace('\n', ' ') + "..." if len(text) > 100 else text.replace('\n', ' ')
-            logger.info(f"[API] [{i+1}/{len(request.texts)}] 처리 시작 | 입력 길이: {len(text)} chars")
-            logger.info(f"[API] [{i+1}/{len(request.texts)}] 입력 미리보기: {text_preview}")
-            
-            try:
-                # 1. 영문 요약
-                summarize_start = time.time()
-                summary_en = summarizer.summarize(text)
-                summarize_time = time.time() - summarize_start
-                logger.info(f"[API] [{i+1}/{len(request.texts)}] 요약 완료 | 소요: {summarize_time:.2f}s | 출력 길이: {len(summary_en)} chars")
-                
-                # 2. 한글 번역
-                translate_start = time.time()
-                summary_ko = translator.translate(summary_en) if summary_en else ""
-                translate_time = time.time() - translate_start
-                logger.info(f"[API] [{i+1}/{len(request.texts)}] 번역 완료 | 소요: {translate_time:.2f}s | 출력 길이: {len(summary_ko)} chars")
-                
-                # 결과 미리보기
-                en_preview = summary_en[:80] + "..." if len(summary_en) > 80 else summary_en
-                ko_preview = summary_ko[:80] + "..." if len(summary_ko) > 80 else summary_ko
-                logger.info(f"[API] [{i+1}/{len(request.texts)}] 영문 요약: {en_preview}")
-                logger.info(f"[API] [{i+1}/{len(request.texts)}] 한글 번역: {ko_preview}")
-                
-                text_time = time.time() - text_start
-                logger.info(f"[API] [{i+1}/{len(request.texts)}] 처리 완료 | 총 소요: {text_time:.2f}s")
-                
-                results.append(SummaryResult(
-                    summary_en=summary_en,
-                    summary_ko=summary_ko
-                ))
-            except Exception as e:
-                logger.error(f"[API] [{i+1}/{len(request.texts)}] 처리 실패: {e}")
-                results.append(SummaryResult(summary_en="", summary_ko=""))
+        for i, (en, ko) in enumerate(zip(summaries_en, summaries_ko)):
+            results.append(SummaryResult(summary_en=en, summary_ko=ko))
+            if i < 3:  # 처음 3개만 로깅
+                en_preview = en[:60] + "..." if len(en) > 60 else en
+                ko_preview = ko[:60] + "..." if len(ko) > 60 else ko
+                logger.info(f"[API] [{i+1}] EN: {en_preview}")
+                logger.info(f"[API] [{i+1}] KO: {ko_preview}")
 
         total_time = time.time() - total_start
         logger.info(f"[API] ========== 배치 요약 완료 ==========")
-        logger.info(f"[API] 총 처리: {len(results)}건 | 총 소요 시간: {total_time:.2f}s | 평균: {total_time/len(results):.2f}s/건")
+        logger.info(f"[API] 총 처리: {len(results)}건 | 총 소요: {total_time:.2f}s | 평균: {total_time/len(results):.2f}s/건")
         return SummarizeBatchResponse(results=results)
 
     except Exception as e:
